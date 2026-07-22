@@ -1,7 +1,7 @@
 # MatchIn — Dating & Meetup ⭕️ (@MatchInIdBot) — Panduan Setup dari 0
 
 Bot ini dibuat dengan **Python 3 + aiogram 3** dan database **Supabase (PostgreSQL)**,
-dijalankan gratis di **Koyeb**. Sesuai spesifikasi: onboarding, verifikasi video note,
+dijalankan gratis di **Render**. Sesuai spesifikasi: onboarding, verifikasi video note,
 matching ala Tinder, kuota harian, referral, dan VIP dengan approval manual admin via QRIS.
 
 ---
@@ -10,7 +10,7 @@ matching ala Tinder, kuota harian, referral, dan VIP dengan approval manual admi
 - Akun Telegram (bot token sudah kamu punya ✅ — bot: **@MatchInIdBot**, nama tampilan: **MatchIn — Dating & Meetup ⭕️**)
 - Akun GitHub (gratis) → https://github.com
 - Akun Supabase (gratis) → https://supabase.com
-- Akun Koyeb (gratis) → https://www.koyeb.com
+- Akun Render (gratis) → https://render.com
 
 ---
 
@@ -125,19 +125,26 @@ Karena itu, `bot.py` sekarang menjalankan **dua hal sekaligus** dalam satu prose
 - server HTTP kecil (`webhook.py`) yang mendengarkan di endpoint callback — otomatis jadi
   `/duitku/callback` atau `/tripay/callback` tergantung `PAYMENT_GATEWAY` yang kamu pilih.
 
-Konsekuensinya: saat deploy, service type di Koyeb harus **Web Service** (bukan Worker),
-supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untuk endpoint itu.
+Konsekuensinya: saat deploy, service type di Render harus **Web Service** (bukan Background Worker),
+supaya Render kasih port publik & domain (`https://nama-app-kamu.onrender.com`) untuk endpoint itu.
 
-## 5. Deploy ke Koyeb (Gratis, 24/7, tanpa cold start)
+## 5. Deploy ke Render (Gratis, pengganti Koyeb)
 
-1. Login ke https://app.koyeb.com → **Create Service**.
-2. Pilih source **GitHub**, hubungkan akun GitHub kamu, pilih repo yang tadi di-push.
-3. Pilih **Instance type: Free (Nano)**.
-4. Di bagian **Service type**, pilih **Web Service** (bukan Worker) — karena sekarang bot juga
-   perlu menerima webhook callback dari payment gateway lewat HTTP.
-   - Set **Port** ke `8000` (harus sama dengan env var `PORT`, defaultnya sudah 8000).
-   - Health check path bisa dibiarkan `/` (sudah disediakan endpoint health check sederhana).
-5. Di bagian **Environment variables**, tambahkan satu-satu:
+> Koyeb sudah menutup pendaftaran free tier untuk user baru, jadi panduan ini pakai
+> **Render** sebagai gantinya — alurnya paling mirip Koyeb (hubungkan GitHub lewat web UI,
+> tanpa perlu install CLI apa pun).
+
+1. Login ke https://dashboard.render.com (bisa daftar pakai akun GitHub langsung, tidak wajib kartu kredit) → **New +** → **Web Service**.
+2. Pilih **Build and deploy from a Git repository** → hubungkan akun GitHub kamu → pilih repo `matchin-bot` (atau nama repo yang tadi kamu push).
+3. Isi konfigurasi service:
+   - **Name**: bebas, misal `matchin-bot`.
+   - **Region**: pilih yang terdekat (Singapore).
+   - **Branch**: `main`.
+   - **Runtime**: `Python 3`.
+   - **Build Command**: `pip install -r requirements.txt`.
+   - **Start Command**: `python bot.py` (sama seperti isi `Procfile`).
+4. **Instance Type**: pilih **Free**.
+5. Di bagian **Environment Variables**, tambahkan satu-satu (klik **Add Environment Variable**):
    - `BOT_TOKEN` = token bot kamu
    - `DATABASE_URL` = connection string Supabase
    - `ADMIN_GROUP_ID` = id grup admin
@@ -145,19 +152,36 @@ supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untu
    - `PAYMENT_GATEWAY` = `duitku` atau `tripay`
    - Kredensial provider yang kamu pilih (lihat bagian 4b): `DUITKU_MODE` + `DUITKU_MERCHANT_CODE` +
      `DUITKU_API_KEY`, ATAU `TRIPAY_MODE` + `TRIPAY_MERCHANT_CODE` + `TRIPAY_API_KEY` + `TRIPAY_PRIVATE_KEY`
-   - `PUBLIC_BASE_URL` = **isi setelah deploy pertama kali jadi & dapat URL Koyeb**, contoh
-     `https://nama-app-kamu.koyeb.app` (lihat langkah 8)
-6. Build command otomatis akan menjalankan `pip install -r requirements.txt`, dan run command mengikuti `Procfile` (`web: python bot.py`).
-7. Klik **Deploy**. Tunggu build selesai (~1-2 menit), status akan menjadi **Healthy**.
-   Koyeb akan kasih kamu URL publik, misalnya `https://matchin-bot-namakamu.koyeb.app`.
-8. **Set `PUBLIC_BASE_URL`**: edit environment variable `PUBLIC_BASE_URL` dengan URL di atas,
-   lalu redeploy (Koyeb akan restart otomatis).
-9. **Daftarkan URL callback di dashboard provider yang kamu pakai**:
+   - `PORT` = `8000` (Render biasanya auto-set `PORT` sendiri, tapi aman untuk isi manual juga)
+   - `PUBLIC_BASE_URL` = **isi setelah deploy pertama kali jadi & dapat URL Render** (lihat langkah 7)
+6. Klik **Create Web Service**. Tunggu build & deploy selesai (~2-3 menit), status akan menjadi **Live**.
+   Render akan kasih kamu URL publik, misalnya `https://matchin-bot-namakamu.onrender.com`.
+7. **Set `PUBLIC_BASE_URL`**: buka tab **Environment**, edit `PUBLIC_BASE_URL` dengan URL di atas,
+   simpan — Render otomatis redeploy.
+8. **Daftarkan URL callback di dashboard provider yang kamu pakai**:
    - Duitku: menu project di https://passport.duitku.com/merchant/Project → isi kolom **Callback URL**
-     dengan `https://nama-app-kamu.koyeb.app/duitku/callback`.
+     dengan `https://matchin-bot-namakamu.onrender.com/duitku/callback`.
    - Tripay: menu **Merchant → Opsi** (production) atau **Simulator → Merchant → Detail** (sandbox) →
-     isi kolom **URL Callback** dengan `https://nama-app-kamu.koyeb.app/tripay/callback`.
-10. Cek log di tab **Logs** Koyeb — kalau muncul log polling aktif + `Webhook server jalan di port 8000, path callback: ...` tanpa error, bot sudah online 24/7 dan siap terima pembayaran otomatis.
+     isi kolom **URL Callback** dengan `https://matchin-bot-namakamu.onrender.com/tripay/callback`.
+9. Cek log di tab **Logs** Render — kalau muncul log polling aktif + `Webhook server jalan di port 8000, path callback: ...` tanpa error, bot sudah online dan siap terima pembayaran otomatis.
+
+### ⚠️ Catatan penting: free tier Render "tidur" kalau tidak ada traffic
+
+Berbeda dari Koyeb, **Free Web Service di Render otomatis sleep setelah ~15 menit tanpa ada
+request HTTP masuk**. Untuk bot yang jalan dengan polling (perlu terus aktif ngobrol ke Telegram),
+ini masalah karena proses berhenti total saat sleep. Solusinya: pasang **keep-alive ping**
+gratis yang mem-ping endpoint `/` (health check) tiap 5-10 menit, misalnya pakai:
+
+- https://cron-job.org (gratis, tinggal daftar & isi URL `https://matchin-bot-namakamu.onrender.com/`, interval 5 menit), atau
+- https://uptimerobot.com (gratis, monitor HTTP tiap 5 menit sekaligus dapat notifikasi kalau bot down).
+
+Dengan ping rutin ini, service tidak akan pernah idle cukup lama untuk sleep, jadi bot tetap
+online 24/7 walau di free tier.
+
+**Alternatif tanpa perlu keep-alive** (kalau mau yang benar-benar tidak pernah sleep dan tidak
+keberatan menghubungkan kartu untuk verifikasi, tanpa ditagih selama masih dalam batas gratis):
+**Fly.io** — 3 VM kecil gratis, tidak ada sleep. Perlu install `flyctl` CLI dan jalankan
+`fly launch` di folder project (auto-detect Python), lalu `fly secrets set BOT_TOKEN=... DATABASE_URL=... dst` untuk env var, dan `fly deploy`. Beri tahu saya kalau kamu mau panduan lengkap versi Fly.io ini.
 
 ---
 
@@ -189,7 +213,7 @@ dating-bot/
 ├── keyboards.py                # tombol-tombol inline
 ├── schema.sql                   # SQL untuk setup tabel di Supabase
 ├── requirements.txt
-├── Procfile                      # perintah run untuk Koyeb
+├── Procfile                      # perintah run untuk Render (dan platform lain yang baca Procfile)
 ├── .env.example
 └── handlers/
     ├── onboarding.py    # /start, isi profil, verifikasi video
@@ -210,4 +234,4 @@ dating-bot/
 - **"Lihat siapa yang menyukaiku"**: bisa dibuat dengan query ke tabel `swipes` mencari `action IN ('like','like_message')` dengan `target_id = user_id` yang belum kamu balas.
 - Untuk keamanan produksi, sebaiknya batasi command admin (`/report` review, dsb.) hanya bisa dipakai oleh `ADMIN_USER_IDS`.
 
-Selamat mencoba! Kalau ada error saat deploy, cek tab **Logs** di Koyeb — biasanya karena environment variable belum lengkap atau format `DATABASE_URL` salah.
+Selamat mencoba! Kalau ada error saat deploy, cek tab **Logs** di Render — biasanya karena environment variable belum lengkap atau format `DATABASE_URL` salah.
