@@ -49,6 +49,11 @@ PACKAGE_AMOUNT = {
     "lifetime": 99000,
 }
 
+# ---------- SAKLAR PAYMENT GATEWAY ----------
+# Pilih provider yang aktif: "duitku" atau "tripay". Tinggal ganti env var ini +
+# isi kredensial provider terkait untuk pindah gateway, tanpa ubah kode.
+PAYMENT_GATEWAY = os.getenv("PAYMENT_GATEWAY", "duitku")
+
 # ---------- TRIPAY ----------
 # Dapatkan dari dashboard Tripay: https://tripay.co.id/member (mode Production)
 # atau menu API & Integrasi > Simulator, untuk mode Sandbox
@@ -66,7 +71,24 @@ TRIPAY_BASE_URL = (
 # Channel pembayaran Tripay yang dipakai (QRIS statis/dinamis via Tripay).
 TRIPAY_PAYMENT_METHOD = os.getenv("TRIPAY_PAYMENT_METHOD", "QRIS")
 
-# Port HTTP untuk menerima callback/webhook dari Tripay (dipakai saat deploy sebagai Web Service)
+# ---------- DUITKU ----------
+# Dapatkan dari https://passport.duitku.com/merchant/Project (buat project baru,
+# pilih environment sandbox/production, lalu copy Merchant Code & API Key)
+DUITKU_MODE = os.getenv("DUITKU_MODE", "sandbox")  # "sandbox" atau "production"
+DUITKU_MERCHANT_CODE = os.getenv("DUITKU_MERCHANT_CODE", "")
+DUITKU_API_KEY = os.getenv("DUITKU_API_KEY", "")
+
+DUITKU_BASE_URL = (
+    "https://sandbox.duitku.com/webapi"
+    if DUITKU_MODE == "sandbox"
+    else "https://passport.duitku.com/webapi"
+)
+# CATATAN: sebelum pindah ke DUITKU_MODE=production, cek dulu base URL production
+# yang benar di dashboard/dokumentasi resmi Duitku (docs.duitku.com) — Duitku
+# punya beberapa versi API (v2 "webapi" classic vs API baru), pastikan endpoint
+# di atas cocok dengan versi API yang project kamu pakai.
+
+# Port HTTP untuk menerima callback/webhook (dipakai saat deploy sebagai Web Service)
 PORT = int(os.getenv("PORT", "8000"))
 # Base URL publik bot kamu di Koyeb, contoh: https://nama-app-kamu.koyeb.app
 # Dipakai untuk membentuk URL callback yang didaftarkan di dashboard Tripay:

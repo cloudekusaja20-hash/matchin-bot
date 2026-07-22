@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, InlineKeyboardMarkup
 
 import database as db
 import keyboards as kb
-import tripay
+import payments
 from states import VipPurchase
 from config import (
     ADMIN_GROUP_ID, PROMO_PRICE, PRICE_WEEK, PRICE_MONTH, PRICE_LIFETIME, QRIS_INFO_TEXT,
@@ -97,10 +97,10 @@ async def choose_package(callback: CallbackQuery, state: FSMContext, bot: Bot):
         parse_mode="HTML",
     )
 
-    callback_url = f"{PUBLIC_BASE_URL}/tripay/callback" if PUBLIC_BASE_URL else None
+    callback_url = f"{PUBLIC_BASE_URL}{payments.CALLBACK_PATH}" if PUBLIC_BASE_URL else None
 
     try:
-        trx = await tripay.create_transaction(
+        trx = await payments.create_transaction(
             merchant_ref=merchant_ref,
             amount=amount,
             customer_name=user["name"] or f"user{callback.from_user.id}",
@@ -113,7 +113,7 @@ async def choose_package(callback: CallbackQuery, state: FSMContext, bot: Bot):
             }],
             callback_url=callback_url,
         )
-    except tripay.TripayError as e:
+    except payments.GatewayError as e:
         await callback.message.answer(
             f"⚠️ Gagal membuat transaksi pembayaran: {e}\n\n"
             "Coba lagi beberapa saat, atau hubungi admin."

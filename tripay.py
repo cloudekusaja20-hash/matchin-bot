@@ -8,6 +8,11 @@ Alur:
 2. User bayar via QRIS.
 3. Tripay mengirim POST callback ke {PUBLIC_BASE_URL}/tripay/callback berisi status
    transaksi terbaru. Signature callback diverifikasi pakai verify_callback_signature().
+
+Catatan: pendaftaran merchant baru Tripay kadang ditutup sementara oleh mereka.
+Modul ini tetap disiapkan supaya tinggal aktifkan lagi (isi env var TRIPAY_* dan
+set PAYMENT_GATEWAY=tripay) begitu pendaftaran dibuka lagi atau kalau kamu sudah
+punya akun Tripay dari sumber lain.
 """
 import hashlib
 import hmac
@@ -46,8 +51,8 @@ async def create_transaction(
     callback_url: str | None = None,
     method: str | None = None,
 ) -> dict:
-    """Buat transaksi baru di Tripay (Closed Payment). Return dict hasil dari Tripay
-    (berisi antara lain: reference, checkout_url, qr_url, status, expired_time)."""
+    """Buat transaksi baru di Tripay (Closed Payment). Return dict berisi antara
+    lain: reference, checkout_url, qr_url, status, expired_time."""
     if not (TRIPAY_MERCHANT_CODE and TRIPAY_API_KEY and TRIPAY_PRIVATE_KEY):
         raise TripayError(
             "TRIPAY_MERCHANT_CODE / TRIPAY_API_KEY / TRIPAY_PRIVATE_KEY belum diset di environment variable."
@@ -75,12 +80,16 @@ async def create_transaction(
 
     if not body.get("success"):
         raise TripayError(body.get("message", "Gagal membuat transaksi Tripay."))
-    return body["data"]
+    data = body["data"]
+    return {
+        "reference": data.get("reference"),
+        "checkout_url": data.get("checkout_url"),
+        "qr_url": data.get("qr_url"),
+        "raw": data,
+    }
 
 
 async def get_transaction_detail(reference: str) -> dict:
-    """Cek status transaksi langsung ke Tripay (dipakai kalau mode webhook tidak dipakai,
-    atau untuk double-check manual)."""
     headers = {"Authorization": f"Bearer {TRIPAY_API_KEY}"}
     async with aiohttp.ClientSession() as session:
         async with session.get(
@@ -100,5 +109,19 @@ def verify_callback_signature(raw_body: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(calc, signature_header or "")
 
 
-def parse_callback_body(raw_body: bytes) -> dict:
-    return json.loads(raw_body.decode("utf-8"))
+def parse_callback(raw_body: bytes, headers) -> dict | None:
+    """Parse callback Tripay -> dict standar {merchant_ref, status, reference} atau None kalau
+    bukan event pembayaran / signature tidak valid."""
+    signature = headers.get("X-Callback-Signature", "")
+    if not verify_callback_signature(raw_body, signature):
+        return None
+    event = headers.get("X-Callback-Event", "payment_status")
+    if event != "payment_status":
+        return None
+    payload = json.loads(raw_body.decode("utf-8"))
+    status_map = {"PAID": "PAID", "EXPIRED": "EXPIRED", "FAILED": "FAILED", "REFUND": "REFUND"}
+    return {
+        "merchant_ref": payload.get("merchant_ref"),
+        "status": status_map.get(payload.get("status"), payload.get("status")),
+        "reference": payload.get("reference"),
+    }

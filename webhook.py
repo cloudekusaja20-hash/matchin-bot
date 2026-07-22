@@ -1,46 +1,39 @@
 """
-Server HTTP kecil (aiohttp) yang menerima callback/webhook dari Tripay tiap kali
-status transaksi berubah (mis. jadi PAID), lalu otomatis mengaktifkan VIP user.
+Server HTTP kecil (aiohttp) yang menerima callback/webhook dari payment gateway
+(Tripay atau Duitku, tergantung PAYMENT_GATEWAY) tiap kali status transaksi berubah,
+lalu otomatis mengaktifkan VIP user.
 
-Didaftarkan sebagai URL callback di dashboard Tripay:
-{PUBLIC_BASE_URL}/tripay/callback
+Path callback disesuaikan otomatis lewat payments.CALLBACK_PATH:
+- Tripay  -> {PUBLIC_BASE_URL}/tripay/callback
+- Duitku  -> {PUBLIC_BASE_URL}/duitku/callback
 """
 import logging
 
 from aiohttp import web
 
 import database as db
-import tripay
+import payments
 from config import ADMIN_GROUP_ID, PACKAGE_DAYS, PORT
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_tripay_callback(request: web.Request):
+async def handle_payment_callback(request: web.Request):
     bot = request.app["bot"]
     raw_body = await request.read()
-    signature = request.headers.get("X-Callback-Signature", "")
 
-    if not tripay.verify_callback_signature(raw_body, signature):
-        logger.warning("Tripay callback: signature tidak valid.")
+    parsed = payments.parse_callback(raw_body, request.headers)
+    if parsed is None:
+        logger.warning("Callback pembayaran ditolak (signature invalid / event tidak relevan).")
         return web.json_response({"success": False, "message": "invalid signature"}, status=403)
 
-    try:
-        payload = tripay.parse_callback_body(raw_body)
-    except Exception:
-        return web.json_response({"success": False, "message": "invalid json"}, status=400)
-
-    event = request.headers.get("X-Callback-Event", "payment_status")
-    if event != "payment_status":
-        return web.json_response({"success": True})
-
-    merchant_ref = payload.get("merchant_ref")
-    status = payload.get("status")  # PAID, EXPIRED, FAILED, dsb.
+    merchant_ref = parsed["merchant_ref"]
+    status = parsed["status"]  # PAID, EXPIRED, FAILED, dsb.
 
     req = await db.get_payment_by_merchant_ref(merchant_ref)
     if not req:
-        logger.warning("Tripay callback: merchant_ref %s tidak ditemukan.", merchant_ref)
-        return web.json_response({"success": True})  # tetap 200 supaya Tripay tidak retry terus
+        logger.warning("Callback: merchant_ref %s tidak ditemukan.", merchant_ref)
+        return web.json_response({"success": True})  # tetap 200 supaya gateway tidak retry terus
 
     if status == "PAID":
         if req["status"] == "pending":
@@ -64,7 +57,7 @@ async def handle_tripay_callback(request: web.Request):
                 try:
                     await bot.send_message(
                         ADMIN_GROUP_ID,
-                        f"✅ Pembayaran Tripay #{req['id']} (user {req['user_id']}, "
+                        f"✅ Pembayaran #{req['id']} (user {req['user_id']}, "
                         f"paket {req['package']}) LUNAS otomatis via webhook.",
                     )
                 except Exception:
@@ -83,7 +76,7 @@ async def health(request: web.Request):
 def build_app(bot) -> web.Application:
     app = web.Application()
     app["bot"] = bot
-    app.router.add_post("/tripay/callback", handle_tripay_callback)
+    app.router.add_post(payments.CALLBACK_PATH, handle_payment_callback)
     app.router.add_get("/", health)
     return app
 
@@ -94,5 +87,5 @@ async def run_webhook_server(bot):
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
     await site.start()
-    logger.info("Webhook server Tripay jalan di port %s", PORT)
+    logger.info("Webhook server jalan di port %s, path callback: %s", PORT, payments.CALLBACK_PATH)
     return runner

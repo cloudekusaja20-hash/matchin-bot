@@ -85,34 +85,45 @@ git push -u origin main
 
 ---
 
-## 4b. Daftar Akun Tripay & Aktifkan Pembayaran Otomatis
+## 4b. Payment Gateway Otomatis: Duitku (default) atau Tripay
 
-Bot ini sekarang bisa mengaktifkan VIP **otomatis** (tanpa admin approve manual) lewat
-Tripay (payment gateway lokal, QRIS). Cara daftar:
+Bot ini bisa mengaktifkan VIP **otomatis** (tanpa admin approve manual) lewat payment
+gateway lokal (QRIS). Ada 2 pilihan yang sudah disiapkan kodenya — tinggal aktifkan salah
+satu lewat env var `PAYMENT_GATEWAY`:
 
-1. Buka https://tripay.co.id → **Daftar** (butuh KTP/data usaha untuk verifikasi mode Production —
-   proses review biasanya 1-3 hari kerja).
-2. Sambil menunggu verifikasi, kamu **sudah bisa langsung coding & testing** pakai mode
-   **Sandbox** (uang tidak asli, instan tanpa perlu verifikasi):
-   - Login ke dashboard Tripay → menu **API & Integrasi → Simulator → Merchant → Detail**.
-   - Di situ ada `Merchant Code`, `API Key`, `Private Key` khusus sandbox.
-   - Set `TRIPAY_MODE=sandbox` di `.env` / environment variable Koyeb, isi 3 kredensial itu.
-   - Aktifkan channel QRIS di menu **API & Integrasi → Simulator → Merchant → Channel Pembayaran**.
-3. Setelah akun disetujui (mode Production):
-   - Menu **Merchant → Opsi → Edit** untuk lihat `Merchant Code`, `API Key`, `Private Key` asli.
-   - Aktifkan channel QRIS di menu **Merchant → Opsi → Atur Channel Pembayaran**.
-   - Ganti `TRIPAY_MODE=production` dan isi ulang 3 kredensial dengan yang versi production.
+### Opsi A — Duitku (default, disarankan kalau Tripay lagi tutup pendaftaran)
+1. Buka https://passport.duitku.com/merchant/Project → daftar/login → **buat project baru**.
+2. Pilih environment **Sandbox** dulu untuk testing (instan, tanpa verifikasi lama).
+3. Setelah project dibuat, akan muncul `Merchant Code` dan `API Key` — catat keduanya.
+4. Set di environment variable: `PAYMENT_GATEWAY=duitku`, `DUITKU_MODE=sandbox`,
+   `DUITKU_MERCHANT_CODE`, `DUITKU_API_KEY`.
+5. Kalau sudah siap terima uang asli: buat project baru dengan environment **Production**
+   (butuh verifikasi data usaha/pribadi), lalu ganti `DUITKU_MODE=production` + kredensial baru.
+
+### Opsi B — Tripay (aktifkan lagi kalau pendaftaran mereka sudah dibuka)
+1. Daftar di https://tripay.co.id, ambil kredensial sandbox di menu
+   **API & Integrasi → Simulator → Merchant → Detail** (`Merchant Code`, `API Key`, `Private Key`).
+   Aktifkan channel QRIS di menu yang sama.
+2. Set di environment variable: `PAYMENT_GATEWAY=tripay`, `TRIPAY_MODE=sandbox`,
+   `TRIPAY_MERCHANT_CODE`, `TRIPAY_API_KEY`, `TRIPAY_PRIVATE_KEY`.
+3. Setelah akun disetujui mode Production: ambil kredensial production di
+   **Merchant → Opsi → Edit**, aktifkan channel QRIS di **Merchant → Opsi → Atur Channel Pembayaran**,
+   lalu ganti `TRIPAY_MODE=production` + kredensial baru.
+
+**Kamu cukup isi kredensial untuk SATU provider** (sesuai `PAYMENT_GATEWAY` yang dipilih) —
+kredensial provider yang tidak dipakai boleh dikosongkan.
 
 ### Webhook vs polling — kenapa perlu Web Service
 
 Bot ini jalan dengan **polling** (bot yang aktif "nanya" ke Telegram terus-menerus, bukan
-Telegram yang kirim ke bot). Itu cukup untuk chat Telegram, tapi **Tripay perlu mengirim
-notifikasi (webhook/callback) ke sebuah URL HTTP publik** setiap kali status pembayaran
-berubah — ini beda mekanisme dan butuh port terbuka.
+Telegram yang kirim ke bot). Itu cukup untuk chat Telegram, tapi **payment gateway (Duitku/Tripay)
+perlu mengirim notifikasi (webhook/callback) ke sebuah URL HTTP publik** setiap kali status
+pembayaran berubah — ini beda mekanisme dan butuh port terbuka.
 
 Karena itu, `bot.py` sekarang menjalankan **dua hal sekaligus** dalam satu proses:
 - polling ke Telegram (seperti biasa), dan
-- server HTTP kecil (`webhook.py`) yang mendengarkan di endpoint `/tripay/callback`.
+- server HTTP kecil (`webhook.py`) yang mendengarkan di endpoint callback — otomatis jadi
+  `/duitku/callback` atau `/tripay/callback` tergantung `PAYMENT_GATEWAY` yang kamu pilih.
 
 Konsekuensinya: saat deploy, service type di Koyeb harus **Web Service** (bukan Worker),
 supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untuk endpoint itu.
@@ -123,7 +134,7 @@ supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untu
 2. Pilih source **GitHub**, hubungkan akun GitHub kamu, pilih repo yang tadi di-push.
 3. Pilih **Instance type: Free (Nano)**.
 4. Di bagian **Service type**, pilih **Web Service** (bukan Worker) — karena sekarang bot juga
-   perlu menerima webhook callback dari Tripay lewat HTTP.
+   perlu menerima webhook callback dari payment gateway lewat HTTP.
    - Set **Port** ke `8000` (harus sama dengan env var `PORT`, defaultnya sudah 8000).
    - Health check path bisa dibiarkan `/` (sudah disediakan endpoint health check sederhana).
 5. Di bagian **Environment variables**, tambahkan satu-satu:
@@ -131,8 +142,9 @@ supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untu
    - `DATABASE_URL` = connection string Supabase
    - `ADMIN_GROUP_ID` = id grup admin
    - `ADMIN_USER_IDS` = user id admin (pisah koma jika lebih dari satu)
-   - `TRIPAY_MODE` = `sandbox` (untuk testing) atau `production`
-   - `TRIPAY_MERCHANT_CODE`, `TRIPAY_API_KEY`, `TRIPAY_PRIVATE_KEY` = dari dashboard Tripay
+   - `PAYMENT_GATEWAY` = `duitku` atau `tripay`
+   - Kredensial provider yang kamu pilih (lihat bagian 4b): `DUITKU_MODE` + `DUITKU_MERCHANT_CODE` +
+     `DUITKU_API_KEY`, ATAU `TRIPAY_MODE` + `TRIPAY_MERCHANT_CODE` + `TRIPAY_API_KEY` + `TRIPAY_PRIVATE_KEY`
    - `PUBLIC_BASE_URL` = **isi setelah deploy pertama kali jadi & dapat URL Koyeb**, contoh
      `https://nama-app-kamu.koyeb.app` (lihat langkah 8)
 6. Build command otomatis akan menjalankan `pip install -r requirements.txt`, dan run command mengikuti `Procfile` (`web: python bot.py`).
@@ -140,10 +152,12 @@ supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untu
    Koyeb akan kasih kamu URL publik, misalnya `https://matchin-bot-namakamu.koyeb.app`.
 8. **Set `PUBLIC_BASE_URL`**: edit environment variable `PUBLIC_BASE_URL` dengan URL di atas,
    lalu redeploy (Koyeb akan restart otomatis).
-9. **Daftarkan URL callback di Tripay**: login dashboard Tripay → menu **Merchant → Opsi**
-   (production) atau **Simulator → Merchant → Detail** (sandbox) → isi kolom **URL Callback**
-   dengan `https://nama-app-kamu.koyeb.app/tripay/callback` → simpan.
-10. Cek log di tab **Logs** Koyeb — kalau muncul log polling aktif + `Webhook server Tripay jalan di port 8000` tanpa error, bot sudah online 24/7 dan siap terima pembayaran otomatis.
+9. **Daftarkan URL callback di dashboard provider yang kamu pakai**:
+   - Duitku: menu project di https://passport.duitku.com/merchant/Project → isi kolom **Callback URL**
+     dengan `https://nama-app-kamu.koyeb.app/duitku/callback`.
+   - Tripay: menu **Merchant → Opsi** (production) atau **Simulator → Merchant → Detail** (sandbox) →
+     isi kolom **URL Callback** dengan `https://nama-app-kamu.koyeb.app/tripay/callback`.
+10. Cek log di tab **Logs** Koyeb — kalau muncul log polling aktif + `Webhook server jalan di port 8000, path callback: ...` tanpa error, bot sudah online 24/7 dan siap terima pembayaran otomatis.
 
 ---
 
@@ -153,9 +167,9 @@ supaya Koyeb kasih port publik & domain (`https://nama-app-kamu.koyeb.app`) untu
 2. **Verifikasi admin**: video note otomatis terkirim ke grup admin dengan tombol ✅/❌. Klik salah satu untuk approve/reject.
 3. **Swipe**: setelah profil complete, ketik `/swipe` atau tombol "🔍 Mulai Cari Pasangan" untuk melihat profil lain (butuh minimal 2 akun berbeda dengan lokasi & preferensi yang cocok untuk testing).
 4. **Like/Match**: like dua akun satu sama lain → otomatis dapat notifikasi match + kontak.
-5. **VIP (otomatis via Tripay)**: `/vip` → pilih paket → bot kirim QR code + tombol "💳 Bayar Sekarang" →
-   di mode **sandbox** kamu bisa "bayar" tanpa uang asli lewat halaman simulator Tripay → begitu Tripay
-   kirim callback `PAID`, VIP aktif otomatis & user dapat notifikasi, tanpa admin perlu klik apa-apa.
+5. **VIP (otomatis via Duitku/Tripay)**: `/vip` → pilih paket → bot kirim tombol "💳 Bayar Sekarang" →
+   di mode **sandbox** kamu bisa "bayar" tanpa uang asli di halaman simulator provider → begitu callback
+   `PAID` masuk, VIP aktif otomatis & user dapat notifikasi, tanpa admin perlu klik apa-apa.
    Kalau webhook belum kamu-set (`PUBLIC_BASE_URL` kosong) atau lagi error, fallback manual masih ada:
    ketik `/bayarmanual`, upload screenshot, admin klik "✅ Aktifkan VIP" di grup admin.
 6. **Referral**: `/referral` untuk dapat link unik; user baru yang daftar lewat link ini otomatis tercatat sebagai referral.
